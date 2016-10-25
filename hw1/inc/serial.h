@@ -17,4 +17,8 @@ void puts(const char *);
 
 void put_int(int a);
 
+void put_uint32(uint32_t, int, int);
+
+void put_uint64(uint64_t, int, int);
+
 #endif

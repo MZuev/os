@@ -14,6 +14,7 @@ void putc(char a) {
 	out8(SERIAL_PORT(0), a);
 	return;
 }
+
 void put_int(int a) {
 	if (!a) {
 		putc('0');
@@ -28,6 +29,48 @@ void put_int(int a) {
 	while (a) {
 		buf[cnt++] = '0' + (a % 10);
 		a /= 10;
+	}
+	while (cnt)
+		putc(buf[--cnt]);
+	return;
+}
+
+void put_uint32(uint32_t a, int base, int width) {
+	if (base == 16)
+		puts("0x");
+	if (!a && width < 1) {
+		width = 1;
+	}
+	char buf[32];
+	int cnt = 0;
+	while (a || cnt < width) {
+		int num = a % base;
+		if (num < 10)
+			buf[cnt++] = '0' + num;
+		else
+			buf[cnt++] = 'a' + num - 10;
+		a /= base;
+	}
+	while (cnt)
+		putc(buf[--cnt]);
+	return;
+}
+
+void put_uint64(uint64_t a, int base, int width) {
+	if (base == 16)
+		puts("0x");
+	if (!a && width < 1) {
+		width = 1;
+	}
+	char buf[64];
+	int cnt = 0;
+	while (a || cnt < width) {
+		int num = a % base;
+		if (num < 10)
+			buf[cnt++] = '0' + num;
+		else
+			buf[cnt++] = 'a' + num - 10;
+		a /= base;
 	}
 	while (cnt)
 		putc(buf[--cnt]);

@@ -14,11 +14,16 @@ static void qemu_gdb_hang(void)
 #include <idt.h>
 #include <pit.h>
 #include <pic.h>
+#include <memory.h>
+#include <mem_init.h>
+#include <buddy.h>
 
 void init_all() {
 	setup_serial_port();
 	init_idt();
 	setup_pic();
+	init_mem();
+	init_buddy();
 }
 
 void start_pit() {
@@ -27,17 +32,44 @@ void start_pit() {
 	setup_pit();	
 }
 
+void test_buddy() {
+	print_some_buddy(MAX_ORD);
+	uint64_t a = alloc((1 << 12));
+	uint64_t b = alloc((1 << 12));
+	uint64_t c = alloc((1 << 12));
+	uint64_t d = alloc((1 << 12));
+	put_uint64(a, 16, 16);
+	putc('\n');
+	put_uint64(b, 16, 16);
+	putc('\n');
+	put_uint64(c, 16, 16);
+	putc('\n');
+	put_uint64(d, 16, 16);
+	putc('\n');
+
+	print_some_buddy(2);
+
+	free(a);
+	free(b);
+	free(c);
+	free(d);
+	putc('\n');
+
+	print_some_buddy(2);
+	return;
+}
+
 void main(void)
 {	
 	qemu_gdb_hang();
 
 	init_all();
-
-	puts("Hello\n");
 	
-	__asm__ volatile("int $123");
+	print_mem();
+	
+	test_buddy();
 
-	start_pit();
+	
 
 	while (1);
 }
