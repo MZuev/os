@@ -29,8 +29,6 @@ uint64_t get_max_reg(mmap_entry entry) {
 
 
 void init_entry(mmap_entry entry) {
-	if (entry.type != 1)
-		return;
 	uint64_t cnt_reg = get_max_reg(entry);
 	if (!cnt_reg)
 		return;
@@ -65,6 +63,7 @@ void init_buddy() {
 			list_node *tmp = cur_node->next->next;
 			erase_cur(&cur_desc->node);
 			erase_cur(&next_desc->node);
+			next_desc->is_free = 0;
 			++(cur_desc->ord);
 			add_prev(desc_heads + ord + 1, &cur_desc->node);
 			cur_node = tmp;
@@ -77,19 +76,8 @@ void init_buddy() {
 	return;
 }
 
-list_node * lower_bound(list_node *start_node, uint64_t num) {
-	list_node* cur_node = start_node->next;
-	while (cur_node != start_node) {
-		if (((buddy_desc*)cur_node)->num >= num)
-			break;
-		cur_node = cur_node->next;
-	}
-	return cur_node;
-}
-
-void add_list(list_node* start_node, buddy_desc *cur_desc) {
-	list_node *cur_node = lower_bound(start_node, cur_desc->num);
-	add_prev(cur_node, &(cur_desc->node));
+void add_list(int num_ord, buddy_desc *cur_desc) {
+	add_next(desc_heads + num_ord, &(cur_desc->node));
 	return;
 }
 
@@ -101,7 +89,7 @@ uint64_t buddy_alloc(int max_ord, int min_ord) {
 		buddy_desc *r_desc = l_desc + bit(max_ord - 1);
 		r_desc->ord = max_ord - 1;
 		r_desc->is_free = 1;
-		add_list(desc_heads + max_ord - 1, r_desc);
+		add_list(max_ord - 1, r_desc);
 		cur_node = &(l_desc->node);
 	}
 	buddy_desc* cur_desc = (buddy_desc*)cur_node;
@@ -122,53 +110,62 @@ uint64_t alloc(uint64_t size) {
 	return 0;
 }
 
-uint64_t find_start(uint64_t addr) {
-	for (uint32_t i = 0; i < mmap_table_length; ++i) {
-		if (mmap_table[i].type != 1)
-			continue;
+uint32_t find_num_mem_seg(uint64_t addr) {
+	for (uint32_t i = 0; i < mmap_table_length; ++i)
 		if (mmap_table[i].addr <= addr && mmap_table[i].addr + mmap_table[i].len > addr)
-			return mmap_table[i].addr;
-	}
-	return 0;
+			return i;
+	return mmap_table_length;
+}
+buddy_desc* get_start_desc(uint32_t num_mem_seg) {
+	return (buddy_desc*)ualign(mmap_table[num_mem_seg].addr, sizeof(buddy_desc));
 }
 
-void buddy_free(buddy_desc* cur_desc) {
-	int cur_ord = cur_desc->ord;
-	cur_desc->is_free = 1;
+buddy_desc* get_desc(uint64_t addr, uint32_t num_mem_seg) {
+	buddy_desc* start_desc = get_start_desc(num_mem_seg);
+	uint64_t start_addr = start_desc->num * BUDDY_PAGE_SIZE;
+	uint64_t len = (addr - start_addr) / BUDDY_PAGE_SIZE;
+	return start_desc + len;
+}
+
+int check_buddy_in_seg(uint64_t buddies, uint32_t num_seg) {
+	uint64_t bud_addr = buddies * BUDDY_PAGE_SIZE;
+	buddy_desc* start_desc = get_start_desc(num_seg);
+	if (start_desc->num > buddies)
+		return 0;
+	return bud_addr + BUDDY_PAGE_SIZE > bud_addr && 
+		bud_addr + BUDDY_PAGE_SIZE <= mmap_table[num_seg].addr + mmap_table[num_seg].len;
+}
+
+void buddy_free(buddy_desc* cur_desc, uint32_t num_mem_seg) {
+	uint32_t cur_ord = cur_desc->ord;
 	for (; cur_ord < MAX_ORD; ++cur_ord) {
-		list_node * next_node = lower_bound(desc_heads + cur_ord, cur_desc->num);
-		uint64_t buddies = cur_desc->num ^ bit(cur_ord); 
-		if (cur_desc->num & bit(cur_ord)) {
-			next_node = next_node->prev;
-			if ((next_node == desc_heads + cur_ord) || ((buddy_desc*)next_node)->num != buddies) {
-				add_next(next_node, &cur_desc->node);
-				return;
-			}
-			erase_cur(next_node);
-			cur_desc = (buddy_desc*)next_node;
-		}
-		else {
-			if ((next_node == desc_heads + cur_ord) || ((buddy_desc*)next_node)->num != buddies) {
-				add_prev(next_node, &cur_desc->node);
-				return;	
-			}
-			erase_cur(next_node);
-		}
-		++cur_desc->ord;
+		uint64_t buddies = cur_desc->num ^ bit(cur_ord);
+		if (!check_buddy_in_seg(buddies, num_mem_seg))
+			break;
+		buddy_desc* bud_desc = get_desc(buddies * BUDDY_PAGE_SIZE, num_mem_seg);
+		if (bud_desc->is_free == 0 || bud_desc->ord != cur_ord)
+			break;
+		erase_cur(&bud_desc->node);
+		bud_desc->is_free = 0;
+		if (buddies < cur_desc->num)
+			cur_desc = bud_desc;
 	}
+	cur_desc->is_free = 1;
+	add_list(cur_ord, cur_desc);
 	return;
 }
+
 
 void free(uint64_t addr) {
 	if (addr % BUDDY_PAGE_SIZE)
 		return;
-	buddy_desc* start_desc = (buddy_desc*)ualign(find_start(addr), sizeof(buddy_desc));
-	uint64_t start_addr = start_desc->num * BUDDY_PAGE_SIZE;
-	uint64_t len = (addr - start_addr) / BUDDY_PAGE_SIZE;
-	start_desc += len;
-	if (start_desc->is_free)
+	uint32_t num_seg = find_num_mem_seg(addr);
+	if (num_seg == mmap_table_length)
 		return;
-	buddy_free(start_desc);
+	buddy_desc* cur_desc = get_desc(addr, num_seg);
+	if (cur_desc->is_free)
+		return;
+	buddy_free(cur_desc, num_seg);
 }
 
 void print_some_buddy(int max_ord) {
@@ -188,7 +185,7 @@ void print_list(int ord) {
 		puts(" addr ");
 		put_uint64(cur_desc->num * BUDDY_PAGE_SIZE, 16, 16);
 		puts(" len ");
-		put_uint64(cur_desc->num * (BUDDY_PAGE_SIZE << ord), 10, 0);
+		put_uint64((BUDDY_PAGE_SIZE << (cur_desc->ord)), 10, 0);
 		putc('\n');
 		cur_node = cur_node->next;
 	}

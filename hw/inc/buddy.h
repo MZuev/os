@@ -6,7 +6,7 @@
 #include <stdint.h>
 
 #define MAX_ORD 64
-#define BUDDY_PAGE_SIZE 4096
+#define BUDDY_PAGE_SIZE 4096ULL
 
 
 struct buddy_desc{

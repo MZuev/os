@@ -1,6 +1,5 @@
 #include "mem_init.h"
 
-extern mboot_header multiboot_header[];
 mmap_entry mmap_table[SIZE_MMAP_TABLE];
 extern uint64_t multiboot_info;
 uint32_t mmap_table_length;
@@ -30,23 +29,47 @@ void add_mmap_entry(mmap_entry *seg, mmap_entry ker) {
 }
 
 void init_mem() {
+	extern char text_phys_begin[];
+	extern char bss_phys_end[];
+
 	mmap_entry kernel;
-	kernel.addr = multiboot_header->text_phys_begin;
-	kernel.len = multiboot_header->bss_phys_end - kernel.addr;
+	kernel.addr = (uint64_t)text_phys_begin;
+	kernel.len = (uint64_t)bss_phys_end - kernel.addr;
 	kernel.type = 0;
 	mmap_table[mmap_table_length++] = kernel;
 	
-	uint32_t mmap_size = *((uint32_t*)((char*)multiboot_info + 44));
-	char* mmap_addr = (char*)(*((void**)((char*)multiboot_info + 48)));
+	uint32_t *pmultiboot_info = (uint32_t*)multiboot_info;
+	uint32_t mmap_size = *(pmultiboot_info + 11);
+	char* mmap_addr = (char*)(uint64_t)*(pmultiboot_info + 12);
 	uint64_t pos = 0;
 	while (pos < mmap_size) {
 		mmap_entry *seg = (void*)((uint64_t)(mmap_addr + pos));
 		add_mmap_entry(seg, kernel);
 		pos += seg->size + 4;
 	}
-}
-
-void print_mem() {
+	puts("All segments:\n");
+	for (uint32_t i = 0; i < mmap_table_length; ++i) {
+		mmap_entry seg = mmap_table[i];
+		puts("Memory segment ");
+		put_int(i);
+		puts(": ");
+		put_uint64(seg.addr, 16, 16);
+		puts(" - ");
+		put_uint64(seg.addr + seg.len - 1, 16, 16);
+		puts(" len ");
+		put_uint64(seg.len, 10, 0);
+		puts(" type ");
+		put_uint32(seg.type, 10, 0);
+		putc('\n');
+	}
+	uint32_t cur_length = 0;
+	for (uint32_t i = 0; i < mmap_table_length; ++i) {
+		if (mmap_table[i].type != 1)
+			continue;
+		mmap_table[cur_length++] = mmap_table[i];
+	}
+	mmap_table_length = cur_length;
+	puts("\nAvailable segments:\n");
 	for (uint32_t i = 0; i < mmap_table_length; ++i) {
 		mmap_entry seg = mmap_table[i];
 		puts("Memory segment ");
@@ -62,3 +85,4 @@ void print_mem() {
 		putc('\n');
 	}
 }
+

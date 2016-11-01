@@ -18,6 +18,8 @@ static void qemu_gdb_hang(void)
 #include <mem_init.h>
 #include <buddy.h>
 
+extern int max_heads;
+
 void init_all() {
 	setup_serial_port();
 	init_idt();
@@ -33,11 +35,14 @@ void start_pit() {
 }
 
 void test_buddy() {
-	print_some_buddy(MAX_ORD);
-	uint64_t a = alloc((1 << 12));
-	uint64_t b = alloc((1 << 12));
-	uint64_t c = alloc((1 << 12));
-	uint64_t d = alloc((1 << 12));
+	print_some_buddy(max_heads);
+	uint64_t a = alloc(BUDDY_PAGE_SIZE);
+	uint64_t b = alloc(BUDDY_PAGE_SIZE);
+	uint64_t c = alloc(BUDDY_PAGE_SIZE);
+	uint64_t d = alloc(BUDDY_PAGE_SIZE << 1);
+	uint64_t e = alloc(BUDDY_PAGE_SIZE << 1);
+	uint64_t f = alloc(BUDDY_PAGE_SIZE << 1);
+	uint64_t g = alloc(BUDDY_PAGE_SIZE);
 	put_uint64(a, 16, 16);
 	putc('\n');
 	put_uint64(b, 16, 16);
@@ -46,6 +51,12 @@ void test_buddy() {
 	putc('\n');
 	put_uint64(d, 16, 16);
 	putc('\n');
+	put_uint64(e, 16, 16);
+	putc('\n');
+	put_uint64(f, 16, 16);
+	putc('\n');	
+	put_uint64(g, 16, 16);
+	putc('\n');
 
 	print_some_buddy(2);
 
@@ -53,8 +64,11 @@ void test_buddy() {
 	free(b);
 	free(c);
 	free(d);
+	free(e);
+	free(f);
+	free(g);
 	putc('\n');
-
+	
 	print_some_buddy(2);
 	return;
 }
@@ -64,8 +78,6 @@ void main(void)
 	qemu_gdb_hang();
 
 	init_all();
-	
-	print_mem();
 	
 	test_buddy();
 

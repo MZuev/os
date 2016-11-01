@@ -12,14 +12,17 @@
 
 	.align 16
 start32:
+	movl %ebx, multiboot_info
 	jmp 1f
 
 .global multiboot_info
-multiboot_info:
-	.quad 0
 
-.global multiboot_header
+multiboot_info:
+	.quad 42
+
+
 	.align 16
+
 multiboot_header:
 	.long MB_HEADER_MAGIC
 	.long MB_HEADER_FLAGS
@@ -58,7 +61,6 @@ idt_ptr:
 stack_top:
 
 1:	
-	movl %ebx, multiboot_info
 	movl $stack_top, %esp
 	pushl %eax
 	call videomem_clrscr
